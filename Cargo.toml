@@ -1,0 +1,12 @@
+[package]
+name = "sequencer_mvp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+jsonrpsee = { version = "0.16.2",  features = ["server","http-client"]}
+jsonrpsee-core = "0.16.2"
+serde = { version = "1.0", features = ["derive"] }
+futures = "0.3"
+anyhow = "1.0"
