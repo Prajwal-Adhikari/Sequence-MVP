@@ -5,11 +5,12 @@ use jsonrpsee::rpc_params;
 use anyhow::Result;
 use jsonrpsee::core::client::ClientT; // Import the ClientT trait
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 
-async fn get_mempool_length(client: Arc<HttpClient>) -> Result<u64, jsonrpsee::core::Error> {
-    // Call the get_mempool_length method with an empty tuple for no parameters
-    let length: u64 = client.request("get_mempool_length").await?;
-    Ok(length)
+#[derive(Debug, Serialize, Deserialize)] // Add Serialize and Deserialize traits
+pub struct SequencerTransaction {
+    pub tx: TransactionRequest, // The actual transaction from ethers
+    pub timestamp: u64,         // Unix timestamp for ordering
 }
 
 #[tokio::main]
@@ -18,8 +19,12 @@ async fn main() -> Result<()> {
     let client = HttpClientBuilder::default().build("http://127.0.0.1:8000")?;
 
     // Define transaction parameters
-    let from: H160 = "0x1234567890abcdef1234567890abcdef12345678".parse().expect("Invalid from address");
-    let to: H160 = "0x1234567890abcdef1234567890abcdef12345679".parse().expect("Invalid to address");
+    let from: H160 = "0x1234567890abcdef1234567890abcdef12345678"
+        .parse()
+        .expect("Invalid from address");
+    let to: H160 = "0x1234567890abcdef1234567890abcdef12345679"
+        .parse()
+        .expect("Invalid to address");
     let signature = "YourTransactionSignature".to_string();
     let transaction_data = "YourTransactionData".to_string();
 
@@ -49,19 +54,15 @@ async fn main() -> Result<()> {
     }
 
     // Get mempool transactions
-    let mempool_response: Result<Vec<TransactionRequest>, _> = client.request("get_mempool", rpc_params![]).await;
+    let mempool_response: Result<Vec<SequencerTransaction>, _> = client.request("get_mempool", rpc_params![]).await;
     match mempool_response {
         Ok(transactions) => println!("Mempool Transactions: {:?}", transactions),
         Err(err) => eprintln!("Failed to get mempool transactions: {:?}", err),
     }
 
-    match get_mempool_length(client.clone()).await {
-        Ok(length) => println!("Current length of the mempool: {}", length),
-        Err(e) => eprintln!("Failed to retrieve mempool length: {:?}", e),
-    }
-
+    // Get mempool length
+    let length: u64 = client.request("get_mempool_length", rpc_params![]).await?;
+    println!("Current length of the mempool: {}", length);
 
     Ok(())
 }
-
-

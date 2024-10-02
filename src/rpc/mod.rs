@@ -71,6 +71,7 @@ use crate::mempool::Mempool;
 use crate::transaction::SequencerTransaction;
 use ethers::types::{TransactionRequest, NameOrAddress, H160};
 use jsonrpsee::server::{RpcModule, ServerBuilder};
+use jsonrpsee::types::params;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use serde_json::json;
@@ -167,8 +168,9 @@ module.register_method("get_mempool", |_, mempool| {
 
     Ok(serialized_txs)
 })?;
+
 // Method to retrieve the length of the mempool
-module.register_method("get_mempool_length", |_, mempool| {
+module.register_method("get_mempool_length",|_params, mempool| {
     let length = mempool.get_length(); // Assuming you have a `get_length` method in `Mempool`
     Ok(length)
 })?;
