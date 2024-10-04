@@ -64,7 +64,7 @@ async fn batch_process(mempool: Arc<Mempool>, zkvm_url: String) {
 
     loop {
         // Simulate batching every 10 seconds (you can adjust the timing as needed)
-        sleep(Duration::from_secs(10)).await;
+        sleep(Duration::from_secs(5)).await;
 
         let transactions = mempool.get_all_transactions();
         if !transactions.is_empty() {
