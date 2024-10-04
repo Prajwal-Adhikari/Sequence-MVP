@@ -1,184 +1,93 @@
-// use crate::mempool::Mempool;
-// use crate::transaction::SequencerTransaction;
-// use ethers::types::TransactionRequest;
-// use jsonrpsee::server::{RpcModule, ServerBuilder};
-// use std::net::SocketAddr;
-// use std::sync::Arc;
-
-// pub async fn run_rpc_server(mempool: Arc<Mempool>) -> anyhow::Result<()> {
-//     let server_addr = "127.0.0.1:8000".parse::<SocketAddr>()?;
-
-//     // Use ServerBuilder to build the server
-//     let server = ServerBuilder::default().build(server_addr).await?;
-
-//     let mut module = RpcModule::new(mempool.clone());
-
-//     module.register_method("submit_transaction", |params, mempool| {
-//         let (from, to, signature, transaction_data): (String, String, String, String) = params.parse()?;
-    
-//         // Create a TransactionRequest from the provided data
-//         let tx_request = TransactionRequest {
-//             from: Some(from.parse().expect("Invalid from address")),
-//             to: Some(to.parse().expect("Invalid to address")),
-//             gas: Some(21000.into()), // Example gas limit
-//             value: Some(1000.into()), // Example value
-//             nonce: None,              // You can set this based on your logic
-//             ..Default::default()
-//         };
-    
-//         // Create a SequencerTransaction
-//         let sequencer_tx = SequencerTransaction::new(tx_request);
-        
-//         // Add transaction to the mempool
-//         mempool.add_transaction(sequencer_tx.clone());
-//         Ok(format!("Transaction from {:?} to {:?} with signature '{}' and data '{}' submitted", 
-//             sequencer_tx.tx.from.unwrap(), sequencer_tx.tx.to.unwrap(), signature, transaction_data))
-//     })?;
-
-
-    
-//         // Create a SequencerTransaction
-//         let sequencer_tx = SequencerTransaction::new(tx_request);
-        
-//         // Add transaction to the mempool
-//         mempool.add_transaction(sequencer_tx.clone());
-        
-//         // Convert H160 to string for display
-//         let from_address = sequencer_tx.tx.from.unwrap().to_string();
-//         let to_address = sequencer_tx.tx.to.unwrap().to_string();
-        
-//         Ok(format!(
-//             "Transaction from {} to {} with signature '{}' and data '{}' submitted", 
-//             from_address, to_address, signature, transaction_data
-//         ))
-//     })?;
-    
-    
-//     // Method to retrieve transactions
-//     module.register_method("get_mempool", |_, mempool| {
-//         let txs = mempool.get_transactions();
-//         Ok(txs)
-//     })?;
-
-//     // Start the RPC server
-//     let handle = server.start(module)?;
-
-//     handle.stopped().await;
-//     Ok(())
-// }
-
 use crate::mempool::Mempool;
 use crate::transaction::SequencerTransaction;
-use ethers::types::{TransactionRequest, NameOrAddress, H160};
+use ethers::types::{TransactionRequest, NameOrAddress};
 use jsonrpsee::server::{RpcModule, ServerBuilder};
 use jsonrpsee::types::params;
+use reqwest::Client as HttpClient; // Used for sending requests to zkVM endpoint
 use std::net::SocketAddr;
 use std::sync::Arc;
 use serde_json::json;
+use tokio::time::{sleep, Duration};
+use tokio::task;
 
-pub async fn run_rpc_server(mempool: Arc<Mempool>) -> anyhow::Result<()> {
+pub async fn run_rpc_server(mempool: Arc<Mempool>, zkvm_url: &str) -> anyhow::Result<()> {
     let server_addr = "127.0.0.1:8000".parse::<SocketAddr>()?;
-
-    // Use ServerBuilder to build the server
     let server = ServerBuilder::default().build(server_addr).await?;
 
     let mut module = RpcModule::new(mempool.clone());
 
+    // Method to submit a transaction
     module.register_method("submit_transaction", |params, mempool| {
         let (from, to, signature, transaction_data): (String, String, String, String) = params.parse()?;
-    
+
         // Create a TransactionRequest from the provided data
         let tx_request = TransactionRequest {
             from: Some(from.parse().expect("Invalid from address")),
             to: Some(to.parse().expect("Invalid to address")),
             gas: Some(21000.into()), // Example gas limit
             value: Some(1000.into()), // Example value
-            nonce: None,              // You can set this based on your logic
             ..Default::default()
         };
-    
-        // Create a SequencerTransaction
+
+        // Create a SequencerTransaction with a timestamp
         let sequencer_tx = SequencerTransaction::new(tx_request);
-        
-        // Add transaction to the mempool
+
+        // Add the transaction to the mempool
         mempool.add_transaction(sequencer_tx.clone());
 
+        // Log transaction state: Added to mempool
+        println!(
+            "Transaction added to mempool: from {} to {} with signature '{}'",
+            from, to, signature
+        );
 
         Ok(format!(
-            "Transaction from {} to {} with signature '{}' and data '{}' submitted", 
-            from,to,signature,transaction_data
+            "Transaction from {} to {} with signature '{}' submitted", 
+            from, to, signature
         ))
     })?;
-    
-    // Method to retrieve transactions
-// Method to retrieve transactions
-// module.register_method("get_mempool", |_, mempool| {
-//     let txs = mempool.get_transactions();
 
-//     let serialized_txs: Vec<serde_json::Value> = txs.into_iter().map(|tx| {
-//         let from_address = match tx.tx.from {
-//             Some(NameOrAddress::Address(addr)) => addr.to_string(),
-//             Some(NameOrAddress::Name(name)) => name,
-//             None => "None".to_string(),
-//         };
-
-//         let to_address = match tx.tx.to {
-//             Some(NameOrAddress::Address(addr)) => addr.to_string(),
-//             Some(NameOrAddress::Name(name)) => name,
-//             None => "None".to_string(),
-//         };
-
-//         json!({
-//             "from": from_address,  // Directly use the converted string
-//             "to": to_address,      // Directly use the converted string
-//             "gas": tx.tx.gas,
-//             "value": tx.tx.value,
-//             "timestamp": tx.timestamp,
-//         })
-//     }).collect();
-
-//     Ok(serialized_txs)
-// })?;
-
-// Method to retrieve transactions
-module.register_method("get_mempool", |_, mempool| {
-    let txs = mempool.get_transactions();
-
-    let serialized_txs: Vec<serde_json::Value> = txs.into_iter().map(|tx| {
-        // Handle Option<H160> directly
-        let from_address = match tx.tx.from {
-            Some(addr) => addr.to_string(), // Directly convert H160 to string
-            None => "None".to_string(),
-        };
-
-        let to_address = match tx.tx.to {
-            Some(NameOrAddress::Address(addr)) => addr.to_string(),
-            Some(NameOrAddress::Name(name)) => name,
-            None => "None".to_string(),
-        };
-
-        json!({
-            "from": from_address,  // Use the converted string
-            "to": to_address,      // Use the converted string
-            "gas": tx.tx.gas,
-            "value": tx.tx.value,
-            "timestamp": tx.timestamp,
-        })
-    }).collect();
-
-    Ok(serialized_txs)
-})?;
-
-// Method to retrieve the length of the mempool
-module.register_method("get_mempool_length",|_params, mempool| {
-    let length = mempool.get_length(); // Assuming you have a `get_length` method in `Mempool`
-    Ok(length)
-})?;
-
+    // Start the background batcher task
+    let zkvm_url = zkvm_url.to_string();
+    task::spawn(batch_process(mempool.clone(), zkvm_url));
 
     // Start the RPC server
     let handle = server.start(module)?;
 
     handle.stopped().await;
     Ok(())
+}
+
+// Batcher function to pick up transactions and send them to zkVM endpoint
+async fn batch_process(mempool: Arc<Mempool>, zkvm_url: String) {
+    let http_client = HttpClient::new();
+
+    loop {
+        // Simulate batching every 10 seconds (you can adjust the timing as needed)
+        sleep(Duration::from_secs(10)).await;
+
+        let transactions = mempool.get_all_transactions();
+        if !transactions.is_empty() {
+            // Log transaction state: Picked up by batcher
+            println!("Batcher picked up {} transactions", transactions.len());
+
+            // Send batch to zkVM endpoint
+            let response = http_client.post(&zkvm_url)
+                .json(&transactions)
+                .send()
+                .await;
+
+            match response {
+                Ok(res) => {
+                    println!("Batch sent to zkVM, response: {:?}", res);
+                    // Log transaction state: Sent to zkVM
+                },
+                Err(err) => {
+                    eprintln!("Failed to send batch to zkVM: {:?}", err);
+                }
+            }
+        } else {
+            println!("No transactions to batch at this time.");
+        }
+    }
 }
